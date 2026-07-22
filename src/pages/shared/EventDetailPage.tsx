@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, CalendarDays, Clock, MapPin, Users, User, Building2,
   Send, Download, CheckCircle2, Star, MessageSquare,
-  Pencil, Trash2, Check, X, UserCheck,
+  Pencil, Trash2, Check, X, UserCheck, IndianRupee, CreditCard, Tag,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -16,7 +16,7 @@ import { PageLoader, EmptyState } from '../../components/ui/Feedback';
 import { Field, Textarea, Input, Select } from '../../components/ui/Field';
 import { Modal } from '../../components/ui/Modal';
 import { formatDate, formatTime, csvFromRows, downloadFile, relativeTime } from '../../lib/utils';
-import { registerForEvent, cancelRegistration, manualMarkAttendance, unmarkAttendance, submitApprovalRequest } from '../../lib/attendance';
+import { registerForEvent, cancelRegistration, manualMarkAttendance, unmarkAttendance, submitApprovalRequest, payForEvent } from '../../lib/attendance';
 import { logActivity } from '../../lib/actions';
 import type { Event, Registration, AttendanceRow, ApprovalRequest, Feedback, Profile } from '../../types';
 
@@ -46,9 +46,12 @@ export function EventDetailPage() {
   const [editForm, setEditForm] = useState({
     name: '', description: '', event_type: 'Workshop', event_date: '', start_time: '09:00',
     end_time: '17:00', venue: '', max_participants: 100, registration_deadline: '', poster_url: '', status: 'upcoming',
+    is_paid: false, price: 0, tags: '',
   });
   const [editSaving, setEditSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   const isOwner = profile && event && event.coordinator_id === profile.id;
   const isCoordinator = profile?.role === 'coordinator' || profile?.role === 'admin';
@@ -96,12 +99,33 @@ export function EventDetailPage() {
 
   const handleRegister = async () => {
     if (!profile) return;
-    const { error } = await registerForEvent(event.id, profile.id);
+    const { error, paymentStatus } = await registerForEvent({
+      eventId: event.id, studentId: profile.id, isPaid: event.is_paid, price: event.price,
+    });
     if (error) toast.error('Registration failed', error);
     else {
-      toast.success('Registered!', 'You are now registered.');
-      setMyReg({ id: 'temp', event_id: event.id, student_id: profile.id, status: 'registered', registered_at: new Date().toISOString() });
+      if (paymentStatus === 'pending') {
+        toast.info('Registered!', `Please pay ₹${event.price} to confirm.`);
+        setPayOpen(true);
+      } else {
+        toast.success('Registered!', 'You are now registered.');
+      }
+      setMyReg({ id: 'temp', event_id: event.id, student_id: profile.id, status: 'registered', payment_status: paymentStatus as 'free' | 'pending', payment_amount: event.price, registered_at: new Date().toISOString() });
       logActivity(profile.id, 'register_event', 'events', event.id);
+    }
+  };
+
+  const handlePay = async () => {
+    if (!profile) return;
+    setPaying(true);
+    await new Promise((r) => setTimeout(r, 1500));
+    const { error } = await payForEvent(event.id, profile.id, event.price);
+    setPaying(false);
+    if (error) toast.error('Payment failed', error);
+    else {
+      toast.success('Payment confirmed!', `₹${event.price} paid.`);
+      setMyReg(myReg ? { ...myReg, payment_status: 'paid' } : null);
+      setPayOpen(false);
     }
   };
 
@@ -208,6 +232,9 @@ export function EventDetailPage() {
       registration_deadline: event.registration_deadline,
       poster_url: event.poster_url ?? '',
       status: event.status,
+      is_paid: event.is_paid,
+      price: event.price,
+      tags: event.tags ?? '',
     });
     setEditOpen(true);
   };
@@ -228,13 +255,16 @@ export function EventDetailPage() {
       registration_deadline: editForm.registration_deadline || editForm.event_date,
       poster_url: editForm.poster_url || null,
       status: editForm.status,
+      is_paid: editForm.is_paid,
+      price: editForm.is_paid ? Number(editForm.price) || 0 : 0,
+      tags: editForm.tags || null,
       updated_at: new Date().toISOString(),
     }).eq('id', id);
     setEditSaving(false);
     if (error) toast.error('Update failed', error.message);
     else {
       toast.success('Event updated');
-      setEvent({ ...event, ...editForm, max_participants: Number(editForm.max_participants) });
+      setEvent({ ...event, ...editForm, max_participants: Number(editForm.max_participants), price: Number(editForm.price) });
       setEditOpen(false);
       logActivity(profile?.id, 'update_event', 'events', id);
     }
@@ -278,11 +308,19 @@ export function EventDetailPage() {
                 {myReg ? (
                   <div className="flex items-center gap-2">
                     <StatusBadge status={myReg.status} />
+                    {event.is_paid && myReg.payment_status !== 'paid' && (
+                      <Button size="sm" onClick={() => setPayOpen(true)}><CreditCard className="h-4 w-4" /> Pay ₹{event.price}</Button>
+                    )}
+                    {event.is_paid && myReg.payment_status === 'paid' && (
+                      <span className="badge bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">Paid</span>
+                    )}
                     <Button variant="secondary" size="sm" onClick={handleCancel}>Cancel</Button>
                   </div>
                 ) : (
                   <div>
-                    <Button onClick={handleRegister} disabled={isDeadlinePassed}><Users className="h-4 w-4" /> Register</Button>
+                    <Button onClick={handleRegister} disabled={isDeadlinePassed}>
+                      <Users className="h-4 w-4" /> {event.is_paid ? `Register (₹${event.price})` : 'Register'}
+                    </Button>
                     {isDeadlinePassed && <p className="mt-1 text-xs text-red-500">Registration closed</p>}
                   </div>
                 )}
@@ -305,6 +343,8 @@ export function EventDetailPage() {
           <Info icon={<Building2 className="h-4 w-4" />} label="Department" value={event.department?.name ?? event.department_name ?? '—'} />
           <Info icon={<CalendarDays className="h-4 w-4" />} label="Reg. deadline" value={formatDate(event.registration_deadline)} />
           <Info icon={<Star className="h-4 w-4" />} label="Rating" value={avgRating ? `${avgRating}/5 (${feedback.length})` : 'No ratings'} />
+          <Info icon={<IndianRupee className="h-4 w-4" />} label="Fee" value={event.is_paid ? `₹${event.price}` : 'Free'} />
+          {event.tags && <Info icon={<Tag className="h-4 w-4" />} label="Tags" value={event.tags} />}
         </div>
         {event.description && (
           <div className="border-t border-ink-100 dark:border-ink-800 px-5 py-4">
@@ -532,7 +572,43 @@ export function EventDetailPage() {
             <Field label="Registration deadline"><Input type="date" value={editForm.registration_deadline} onChange={(e) => setEditForm({ ...editForm, registration_deadline: e.target.value })} /></Field>
             <Field label="Poster URL (optional)"><Input value={editForm.poster_url} onChange={(e) => setEditForm({ ...editForm, poster_url: e.target.value })} /></Field>
           </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Tags (optional)"><Input value={editForm.tags} onChange={(e) => setEditForm({ ...editForm, tags: e.target.value })} placeholder="AI, ML, Beginner…" /></Field>
+            <Field label="Pricing">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!editForm.is_paid} onChange={() => setEditForm({ ...editForm, is_paid: false })} className="rounded" /> Free
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={editForm.is_paid} onChange={() => setEditForm({ ...editForm, is_paid: true })} className="rounded" /> Paid
+                </label>
+                {editForm.is_paid && (
+                  <div className="relative">
+                    <IndianRupee className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <Input type="number" min={0} step="0.01" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="pl-8 w-28" placeholder="0" />
+                  </div>
+                )}
+              </div>
+            </Field>
+          </div>
         </form>
+      </Modal>
+
+      <Modal open={payOpen} onClose={() => setPayOpen(false)} title="Complete payment"
+        footer={<><Button variant="secondary" onClick={() => setPayOpen(false)}>Cancel</Button><Button loading={paying} onClick={handlePay}><CreditCard className="h-4 w-4" /> Pay ₹{event.price}</Button></>}>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-ink-100 dark:border-ink-800 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-ink-500">Event</span>
+              <span className="font-semibold">{event.name}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-sm text-ink-500">Amount</span>
+              <span className="font-semibold">₹{event.price}</span>
+            </div>
+          </div>
+          <p className="text-xs text-ink-400">This is a simulated payment for demo purposes. In production, this would redirect to a secure payment gateway.</p>
+        </div>
       </Modal>
     </div>
   );

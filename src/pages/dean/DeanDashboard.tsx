@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Clock, CheckCircle2, Building2, TrendingUp } from 'lucide-react';
+import { ShieldCheck, Clock, CheckCircle2, Building2, TrendingUp, Download, Users } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, AreaChart, Area,
 } from 'recharts';
@@ -10,13 +10,13 @@ import { Card, CardHeader } from '../../components/ui/Card';
 import { StatusBadge } from '../../components/ui/Badge';
 import { PageLoader, EmptyState } from '../../components/ui/Feedback';
 import { formatDate, relativeTime } from '../../lib/utils';
-import type { ApprovalRequest, Event, AttendanceRow } from '../../types';
+import type { ApprovalRequest, Event, AttendanceRow, Profile } from '../../types';
 
 export function DeanDashboard() {
   const [loading, setLoading] = useState(true);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-  const [att, setAtt] = useState<AttendanceRow[]>([]);
+  const [att, setAtt] = useState<(AttendanceRow & { student?: Profile; event?: Event })[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -24,12 +24,12 @@ export function DeanDashboard() {
       const [{ data: ap }, { data: evs }, { data: a }] = await Promise.all([
         supabase.from('approval_requests').select('*, event:events(*), coordinator:profiles!approval_requests_coordinator_id_fkey(full_name)').order('submitted_at', { ascending: false }),
         supabase.from('events').select('*').order('event_date', { ascending: false }),
-        supabase.from('attendance').select('*'),
+        supabase.from('attendance').select('*, student:profiles!attendance_student_id_fkey(*), event:events(*)'),
       ]);
       if (!active) return;
       setApprovals((ap as ApprovalRequest[]) ?? []);
       setEvents((evs as Event[]) ?? []);
-      setAtt((a as AttendanceRow[]) ?? []);
+      setAtt((a as (AttendanceRow & { student?: Profile; event?: Event })[]) ?? []);
       setLoading(false);
     })();
     return () => {
@@ -60,7 +60,28 @@ export function DeanDashboard() {
     return Array.from(map, ([month, count]) => ({ month, count }));
   }, [att]);
 
-  if (loading) return <PageLoader />;
+  const presentAtt = useMemo(() => att.filter((a) => a.status === 'present'), [att]);
+
+  const exportAtt = () => {
+    const rows = presentAtt.map((a) => ({
+      Student: a.student?.full_name ?? '—',
+      RollNo: a.student?.roll_number ?? '—',
+      Email: a.student?.email ?? '—',
+      Event: a.event?.name ?? '—',
+      Date: a.event ? formatDate(a.event.event_date) : '—',
+      Department: a.event?.department_name ?? '—',
+      DeanApproved: a.approved_by_dean ? 'Yes' : 'No',
+      MarkedAt: a.marked_at ? formatDate(a.marked_at) : '—',
+    }));
+    const csv = [Object.keys(rows[0] ?? {}).join(','), ...rows.map((r) => Object.values(r).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'attended-participants.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -154,6 +175,41 @@ export function DeanDashboard() {
           )}
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Attended participants" subtitle={`${presentAtt.length} present across all events`} action={presentAtt.length > 0 ? <Button size="sm" variant="secondary" onClick={exportAtt}><Download className="h-4 w-4" /> Export CSV</Button> : undefined} />
+        {presentAtt.length === 0 ? (
+          <EmptyState icon={<Users className="h-8 w-8" />} title="No attendance yet" message="Attended participants will appear here once coordinators mark attendance." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-100 dark:border-ink-800 text-left text-xs uppercase tracking-wide text-ink-400">
+                  <th className="py-2 pr-4">Student</th>
+                  <th className="py-2 pr-4">Roll No</th>
+                  <th className="py-2 pr-4">Event</th>
+                  <th className="py-2 pr-4">Date</th>
+                  <th className="py-2 pr-4">Dean</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presentAtt.slice(0, 50).map((a) => (
+                  <tr key={a.id} className="border-b border-ink-50 dark:border-ink-800/50">
+                    <td className="py-3 pr-4 font-medium">{a.student?.full_name ?? '—'}</td>
+                    <td className="py-3 pr-4 text-ink-400">{a.student?.roll_number ?? '—'}</td>
+                    <td className="py-3 pr-4">{a.event?.name ?? '—'}</td>
+                    <td className="py-3 pr-4 text-ink-400">{a.event ? formatDate(a.event.event_date) : '—'}</td>
+                    <td className="py-3 pr-4">
+                      {a.approved_by_dean ? <span className="badge bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">Approved</span> : <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Pending</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {presentAtt.length > 50 && <p className="mt-3 text-xs text-ink-400">Showing 50 of {presentAtt.length}. Export CSV for full list.</p>}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

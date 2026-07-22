@@ -2,7 +2,6 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   CalendarDays,
-  QrCode,
   ClipboardCheck,
   Users,
   Building2,
@@ -31,7 +30,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/app', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'coordinator', 'dean', 'admin'] },
   { to: '/app/events', label: 'Events', icon: CalendarDays, roles: ['student', 'coordinator', 'dean', 'admin'] },
-  { to: '/app/scan', label: 'Scan QR', icon: QrCode, roles: ['student'] },
   { to: '/app/attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['student', 'coordinator', 'dean'] },
   { to: '/app/certificates', label: 'Certificates', icon: Award, roles: ['student', 'dean', 'admin'] },
   { to: '/app/approvals', label: 'Approvals', icon: ShieldCheck, roles: ['coordinator', 'dean'] },

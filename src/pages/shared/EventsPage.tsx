@@ -101,6 +101,8 @@ export function EventsPage() {
                 )}
                 <div className="absolute left-3 top-3"><StatusBadge status={e.status} /></div>
                 <div className="absolute right-3 top-3 badge bg-white/20 text-white backdrop-blur">{e.event_type}</div>
+                {e.is_paid && <div className="absolute right-3 bottom-2 badge bg-amber-500/90 text-white">₹{e.price}</div>}
+                {!e.is_paid && <div className="absolute right-3 bottom-2 badge bg-emerald-500/90 text-white">Free</div>}
               </div>
               <div className="p-4">
                 <h3 className="font-display text-base font-semibold leading-tight group-hover:text-brand-600">{e.name}</h3>

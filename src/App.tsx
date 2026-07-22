@@ -10,7 +10,6 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { EventsPage } from './pages/shared/EventsPage';
 import { EventDetailPage } from './pages/shared/EventDetailPage';
 import { CreateEventPage } from './pages/coordinator/CreateEventPage';
-import { ScanQrPage } from './pages/student/ScanQrPage';
 import { AttendancePage } from './pages/shared/AttendancePage';
 import { CertificatesPage } from './pages/student/CertificatesPage';
 import { NotificationsPage } from './pages/shared/NotificationsPage';
@@ -85,7 +84,6 @@ export default function App() {
         <Route path="events" element={<EventsPage />} />
         <Route path="events/new" element={<RequireAuth roles={['coordinator', 'admin']}><CreateEventPage /></RequireAuth>} />
         <Route path="events/:id" element={<EventDetailPage />} />
-        <Route path="scan" element={<RequireAuth roles={['student']}><ScanQrPage /></RequireAuth>} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="certificates" element={<CertificatesPage />} />
         <Route path="approvals" element={<RequireAuth roles={['coordinator', 'dean', 'admin']}><ApprovalsPage /></RequireAuth>} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, IndianRupee } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -31,6 +31,9 @@ export function CreateEventPage() {
     max_participants: 100,
     registration_deadline: '',
     poster_url: '',
+    is_paid: false,
+    price: 0,
+    tags: '',
   });
 
   useEffect(() => {
@@ -66,6 +69,9 @@ export function CreateEventPage() {
       registration_deadline: form.registration_deadline || form.event_date,
       poster_url: form.poster_url || null,
       coordinator_id: profile.id,
+      is_paid: form.is_paid,
+      price: form.is_paid ? Number(form.price) || 0 : 0,
+      tags: form.tags || null,
       status: 'upcoming',
     }).select().single();
     setSaving(false);
@@ -112,6 +118,25 @@ export function CreateEventPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Registration deadline"><Input type="date" value={form.registration_deadline} onChange={(e) => set('registration_deadline', e.target.value)} /></Field>
             <Field label="Poster URL (optional)"><Input value={form.poster_url} onChange={(e) => set('poster_url', e.target.value)} placeholder="https://…" /></Field>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Tags (optional)"><Input value={form.tags} onChange={(e) => set('tags', e.target.value)} placeholder="AI, ML, Beginner…" /></Field>
+            <Field label="Pricing">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!form.is_paid} onChange={() => set('is_paid', false)} className="rounded" /> Free
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.is_paid} onChange={() => set('is_paid', true)} className="rounded" /> Paid
+                </label>
+                {form.is_paid && (
+                  <div className="relative">
+                    <IndianRupee className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+                    <Input type="number" min={0} step="0.01" value={form.price} onChange={(e) => set('price', e.target.value)} className="pl-8 w-28" placeholder="0" />
+                  </div>
+                )}
+              </div>
+            </Field>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Link to="/app/events" className="btn-secondary">Cancel</Link>

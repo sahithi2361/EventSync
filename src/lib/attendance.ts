@@ -1,15 +1,46 @@
 import { supabase } from './supabase';
 import type { Event } from '../types';
 
-export async function registerForEvent(eventId: string, studentId: string): Promise<{ error: string | null }> {
+export async function registerForEvent(opts: {
+  eventId: string;
+  studentId: string;
+  isPaid: boolean;
+  price: number;
+}): Promise<{ error: string | null; paymentStatus?: string }> {
+  const { eventId, studentId, isPaid, price } = opts;
+  const paymentStatus = isPaid ? 'pending' : 'free';
+  const paymentAmount = isPaid ? price : 0;
   const { error } = await supabase
     .from('registrations')
-    .insert({ event_id: eventId, student_id: studentId, status: 'registered' });
+    .insert({
+      event_id: eventId,
+      student_id: studentId,
+      status: 'registered',
+      payment_status: paymentStatus,
+      payment_amount: paymentAmount,
+    });
   if (error) return { error: error.message };
   await supabase.from('notifications').insert({
     user_id: studentId,
     title: 'Event registered',
-    message: 'You have registered for the event.',
+    message: isPaid ? `You have registered. Please pay ₹${price} to confirm.` : 'You have registered for the event.',
+    type: 'event',
+    link: `/app/events/${eventId}`,
+  });
+  return { error: null, paymentStatus };
+}
+
+export async function payForEvent(eventId: string, studentId: string, amount: number): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('registrations')
+    .update({ payment_status: 'paid', payment_amount: amount })
+    .eq('event_id', eventId)
+    .eq('student_id', studentId);
+  if (error) return { error: error.message };
+  await supabase.from('notifications').insert({
+    user_id: studentId,
+    title: 'Payment confirmed',
+    message: `Your payment of ₹${amount} has been confirmed.`,
     type: 'event',
     link: `/app/events/${eventId}`,
   });

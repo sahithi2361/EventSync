@@ -53,8 +53,9 @@ export interface Event {
   status: EventStatus;
   coordinator_id: string;
   attendance_open: boolean;
-  qr_token?: string | null;
-  qr_token_updated_at?: string | null;
+  is_paid: boolean;
+  price: number;
+  tags?: string | null;
   created_at?: string;
   updated_at?: string;
   coordinator?: Profile;
@@ -67,6 +68,8 @@ export interface Registration {
   event_id: string;
   student_id: string;
   status: 'registered' | 'cancelled' | 'attended' | 'absent';
+  payment_status: 'free' | 'pending' | 'paid';
+  payment_amount: number;
   registered_at: string;
   event?: Event;
   student?: Profile;
