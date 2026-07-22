@@ -9,12 +9,13 @@ import { Field, Input } from '../../components/ui/Field';
 import type { Role } from '../../types';
 import { supabase } from '../../lib/supabase';
 
-const roles: { value: Role; label: string; desc: string }[] = [
-  { value: 'student', label: 'Student', desc: 'Register & scan QR' },
-  { value: 'coordinator', label: 'Coordinator', desc: 'Create & manage events' },
-  { value: 'dean', label: 'Dean Academics', desc: 'Approve attendance' },
-  { value: 'admin', label: 'Admin', desc: 'Manage everything' },
-];
+export function inferRoleFromEmail(email: string): Role {
+  const local = email.split('@')[0].toLowerCase();
+  if (local.startsWith('admin')) return 'admin';
+  if (local.startsWith('deanacademics')) return 'dean';
+  if (/^\d/.test(local)) return 'student';
+  return 'coordinator';
+}
 
 export function AuthShell({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
   const { theme, toggle } = useTheme();
@@ -123,7 +124,6 @@ export function SignupPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<Role>('student');
   const [loading, setLoading] = useState(false);
 
   if (session && profile) return <Navigate to="/app" replace />;
@@ -134,6 +134,7 @@ export function SignupPage() {
       toast.error('Password too short', 'Use at least 6 characters.');
       return;
     }
+    const role = inferRoleFromEmail(email.trim());
     setLoading(true);
     const { error } = await signUp({ email: email.trim(), password, fullName: fullName.trim(), role });
     setLoading(false);
@@ -165,26 +166,20 @@ export function SignupPage() {
             <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" className="pl-9" />
           </div>
         </Field>
-        <Field label="I am a">
-          <div className="grid grid-cols-2 gap-2">
-            {roles.map((r) => (
-              <button
-                type="button"
-                key={r.value}
-                onClick={() => setRole(r.value)}
-                className={`rounded-xl border p-3 text-left transition ${role === r.value ? 'border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-2 ring-brand-500/30' : 'border-ink-200 dark:border-ink-700 hover:border-ink-300'}`}
-              >
-                <p className="text-sm font-semibold">{r.label}</p>
-                <p className="text-xs text-ink-400">{r.desc}</p>
-              </button>
-            ))}
-          </div>
-        </Field>
         <Button type="submit" loading={loading} className="w-full">Create account <ArrowRight className="h-4 w-4" /></Button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-500">
         Already have an account? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
       </p>
+      <div className="mt-4 rounded-xl border border-ink-100 dark:border-ink-800 bg-ink-50 dark:bg-ink-900/50 p-4 text-xs text-ink-500">
+        <p className="font-semibold text-ink-600 dark:text-ink-300">Role is auto-detected from your email:</p>
+        <ul className="mt-2 space-y-1">
+          <li><span className="font-medium">22b81a5401@</span> → Student</li>
+          <li><span className="font-medium">ramesh@</span> → Coordinator</li>
+          <li><span className="font-medium">deanacademics@</span> → Dean Academics</li>
+          <li><span className="font-medium">admin@</span> → Admin</li>
+        </ul>
+      </div>
     </AuthShell>
   );
 }
