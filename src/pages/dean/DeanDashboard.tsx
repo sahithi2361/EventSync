@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { StatCard, SectionHeader } from '../../components/dashboard/StatCard';
 import { Card, CardHeader } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
 import { StatusBadge } from '../../components/ui/Badge';
 import { PageLoader, EmptyState } from '../../components/ui/Feedback';
 import { formatDate, relativeTime } from '../../lib/utils';
