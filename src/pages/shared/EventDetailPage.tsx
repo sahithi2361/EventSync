@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { QRCodeCanvas } from 'qrcode.react';
 import {
-  ArrowLeft, CalendarDays, Clock, MapPin, Users, User, Building2, QrCode,
-  Play, Square, RefreshCw, Send, Download, CheckCircle2, Star, MessageSquare,
-  Pencil, Trash2,
+  ArrowLeft, CalendarDays, Clock, MapPin, Users, User, Building2,
+  Send, Download, CheckCircle2, Star, MessageSquare,
+  Pencil, Trash2, Check, X, UserCheck,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
@@ -17,7 +16,7 @@ import { PageLoader, EmptyState } from '../../components/ui/Feedback';
 import { Field, Textarea, Input, Select } from '../../components/ui/Field';
 import { Modal } from '../../components/ui/Modal';
 import { formatDate, formatTime, csvFromRows, downloadFile, relativeTime } from '../../lib/utils';
-import { registerForEvent, cancelRegistration, refreshQrToken, setAttendanceOpen, submitApprovalRequest } from '../../lib/attendance';
+import { registerForEvent, cancelRegistration, manualMarkAttendance, unmarkAttendance, submitApprovalRequest } from '../../lib/attendance';
 import { logActivity } from '../../lib/actions';
 import type { Event, Registration, AttendanceRow, ApprovalRequest, Feedback, Profile } from '../../types';
 
@@ -90,27 +89,6 @@ export function EventDetailPage() {
     };
   }, [id, profile]);
 
-  // QR refresh interval for coordinator
-  const [qrTick, setQrTick] = useState(0);
-  useEffect(() => {
-    if (!isOwner || !event?.attendance_open) return;
-    const t = setInterval(() => setQrTick((v) => v + 1), 30000);
-    return () => clearInterval(t);
-  }, [isOwner, event?.attendance_open]);
-
-  // auto-refresh QR token when attendance opens (if stale)
-  useEffect(() => {
-    if (!isOwner || !event?.attendance_open) return;
-    const stale = event.qr_token_updated_at ? Date.now() - new Date(event.qr_token_updated_at).getTime() > 28000 : true;
-    if (stale && id) {
-      refreshQrToken(id).then(({ token, error }) => {
-        if (error) toast.error('QR refresh failed', error);
-        else if (token && event) setEvent({ ...event, qr_token: token, qr_token_updated_at: new Date().toISOString() });
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qrTick, isOwner, event?.attendance_open, id]);
-
   const avgRating = useMemo(() => (feedback.length ? (feedback.reduce((s, f) => s + f.rating, 0) / feedback.length).toFixed(1) : null), [feedback]);
 
   if (loading) return <PageLoader />;
@@ -137,32 +115,39 @@ export function EventDetailPage() {
     }
   };
 
-  const toggleAttendance = async () => {
-    if (!id) return;
-    const open = !event.attendance_open;
-    const { error } = await setAttendanceOpen(id, open);
+  const handleMark = async (studentId: string, name: string) => {
+    if (!profile || !id) return;
+    const { error } = await manualMarkAttendance({ eventId: id, studentId, markedBy: profile.id, status: 'present' });
     if (error) toast.error('Failed', error);
     else {
-      if (open) {
-        const { token } = await refreshQrToken(id);
-        setEvent({ ...event, attendance_open: true, qr_token: token, qr_token_updated_at: new Date().toISOString() });
-        toast.success('Attendance opened', 'QR is live.');
-      } else {
-        setEvent({ ...event, attendance_open: false, qr_token: null, qr_token_updated_at: null });
-        toast.info('Attendance closed');
-      }
-      logActivity(profile?.id, open ? 'attendance_start' : 'attendance_stop', 'events', id);
+      toast.success(`${name} marked present`);
+      const { data } = await supabase.from('attendance').select('*, student:profiles!attendance_student_id_fkey(*)').eq('event_id', id).order('marked_at');
+      setAtt((data as AttendanceRow[]) ?? []);
+      setRegs((prev) => prev.map((r) => r.student_id === studentId ? { ...r, status: 'attended' as const } : r));
     }
   };
 
-  const manualRefresh = async () => {
+  const handleUnmark = async (studentId: string, name: string) => {
     if (!id) return;
-    const { token, error } = await refreshQrToken(id);
-    if (error) toast.error('Refresh failed', error);
-    else if (token) {
-      setEvent({ ...event, qr_token: token, qr_token_updated_at: new Date().toISOString() });
-      toast.success('QR refreshed');
+    const { error } = await unmarkAttendance({ eventId: id, studentId });
+    if (error) toast.error('Failed', error);
+    else {
+      toast.info(`${name} unmarked`);
+      const { data } = await supabase.from('attendance').select('*, student:profiles!attendance_student_id_fkey(*)').eq('event_id', id).order('marked_at');
+      setAtt((data as AttendanceRow[]) ?? []);
+      setRegs((prev) => prev.map((r) => r.student_id === studentId ? { ...r, status: 'registered' as const } : r));
     }
+  };
+
+  const markAllPresent = async () => {
+    if (!profile || !id) return;
+    for (const r of regs) {
+      await manualMarkAttendance({ eventId: id, studentId: r.student_id, markedBy: profile.id, status: 'present' });
+    }
+    const { data } = await supabase.from('attendance').select('*, student:profiles!attendance_student_id_fkey(*)').eq('event_id', id).order('marked_at');
+    setAtt((data as AttendanceRow[]) ?? []);
+    setRegs((prev) => prev.map((r) => ({ ...r, status: 'attended' as const })));
+    toast.success('All registered students marked present');
   };
 
   const submitApproval = async () => {
@@ -371,14 +356,9 @@ export function EventDetailPage() {
 
           {isOwner && (
             <Card>
-              <CardHeader title="Coordinator controls" subtitle="QR attendance & approval" />
+              <CardHeader title="Coordinator controls" subtitle="Manual attendance & approval" />
               <div className="space-y-3">
-                <Button onClick={toggleAttendance} variant={event.attendance_open ? 'danger' : 'success'} className="w-full">
-                  {event.attendance_open ? <><Square className="h-4 w-4" /> Stop attendance</> : <><Play className="h-4 w-4" /> Start attendance</>}
-                </Button>
-                {event.attendance_open && (
-                  <Button variant="secondary" onClick={manualRefresh} className="w-full"><RefreshCw className="h-4 w-4" /> Refresh QR</Button>
-                )}
+                <Button variant="secondary" onClick={() => setTab('attendance')} className="w-full"><UserCheck className="h-4 w-4" /> Mark attendance</Button>
                 <Button variant="secondary" onClick={() => setSubmitOpen(true)} disabled={approval?.status === 'approved'} className="w-full">
                   <Send className="h-4 w-4" /> {approval ? `Approval: ${approval.status}` : 'Submit to Dean'}
                 </Button>
@@ -413,40 +393,59 @@ export function EventDetailPage() {
       )}
 
       {tab === 'attendance' && (
-        <div className="grid gap-5 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader title="Attendance records" subtitle={`${att.length} marked`} action={isCoordinator && att.length > 0 ? <Button size="sm" variant="ghost" onClick={exportCsv}><Download className="h-4 w-4" /> CSV</Button> : undefined} />
-            {att.length === 0 ? (
-              <EmptyState icon={<CheckCircle2 className="h-8 w-8" />} title="No attendance yet" message="Open attendance and have students scan the QR." />
-            ) : (
-              <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                {att.map((a) => (
-                  <div key={a.id} className="flex items-center gap-3 py-3">
-                    <Avatar name={a.student?.full_name ?? 'Student'} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{a.student?.full_name}</p>
-                      <p className="text-xs text-ink-400">{a.student?.roll_number ?? a.student?.email}</p>
+        <div className="space-y-5">
+          {isOwner ? (
+            <Card>
+              <CardHeader title="Mark attendance" subtitle={`${regs.length} registered • ${att.filter((a) => a.status === 'present').length} present`} action={regs.length > 0 ? <Button size="sm" variant="secondary" onClick={markAllPresent}>Mark all present</Button> : undefined} />
+              {regs.length === 0 ? (
+                <EmptyState icon={<Users className="h-8 w-8" />} title="No registrations" message="Students must register before you can mark attendance." />
+              ) : (
+                <div className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {regs.map((r) => {
+                    const studentAtt = att.find((a) => a.student_id === r.student_id);
+                    const isPresent = studentAtt?.status === 'present';
+                    return (
+                      <div key={r.id} className="flex items-center gap-3 py-3">
+                        <Avatar name={r.student?.full_name ?? 'Student'} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{r.student?.full_name}</p>
+                          <p className="text-xs text-ink-400">{r.student?.roll_number ?? r.student?.email}</p>
+                        </div>
+                        {isPresent ? (
+                          <div className="flex items-center gap-2">
+                            <span className="badge bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">Present</span>
+                            <Button size="sm" variant="ghost" onClick={() => handleUnmark(r.student_id, r.student?.full_name ?? 'Student')}><X className="h-4 w-4" /> Unmark</Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="success" onClick={() => handleMark(r.student_id, r.student?.full_name ?? 'Student')}><Check className="h-4 w-4" /> Mark present</Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader title="Attendance records" subtitle={`${att.length} marked`} action={isCoordinator && att.length > 0 ? <Button size="sm" variant="ghost" onClick={exportCsv}><Download className="h-4 w-4" /> CSV</Button> : undefined} />
+              {att.length === 0 ? (
+                <EmptyState icon={<CheckCircle2 className="h-8 w-8" />} title="No attendance yet" message="Attendance will appear here once the coordinator marks it." />
+              ) : (
+                <div className="divide-y divide-ink-100 dark:divide-ink-800">
+                  {att.map((a) => (
+                    <div key={a.id} className="flex items-center gap-3 py-3">
+                      <Avatar name={a.student?.full_name ?? 'Student'} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">{a.student?.full_name}</p>
+                        <p className="text-xs text-ink-400">{a.student?.roll_number ?? a.student?.email}</p>
+                      </div>
+                      <StatusBadge status={a.status} />
+                      {a.approved_by_dean && <span className="badge bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">Approved</span>}
+                      <span className="text-xs text-ink-400">{relativeTime(a.marked_at)}</span>
                     </div>
-                    <StatusBadge status={a.status} />
-                    {a.approved_by_dean && <span className="badge bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-300">Approved</span>}
-                    <span className="text-xs text-ink-400">{relativeTime(a.marked_at)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-
-          {isOwner && event.attendance_open && (
-            <Card className="text-center">
-              <CardHeader title="Live QR" subtitle="Refreshes every 30s" />
-              <div className="mx-auto max-w-[220px] rounded-2xl bg-white p-4">
-                {event.qr_token ? (
-                  <QRCodeCanvas value={`${window.location.origin}/app/scan?event=${event.id}&token=${event.qr_token}`} size={200} includeMargin />
-                ) : (
-                  <div className="grid h-[200px] place-items-center text-ink-400"><QrCode className="h-10 w-10" /></div>
-                )}
-              </div>
-              <p className="mt-3 text-xs text-ink-400">Present students scan this code. Token: <span className="font-mono">{event.qr_token?.slice(0, 8)}…</span></p>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
         </div>

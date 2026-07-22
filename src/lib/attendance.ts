@@ -80,23 +80,69 @@ export async function markAttendance(opts: {
   return { error: null };
 }
 
-export async function refreshQrToken(eventId: string): Promise<{ token: string | null; error: string | null }> {
-  const token = crypto.randomUUID() + '-' + Date.now().toString(36);
-  const { error } = await supabase
-    .from('events')
-    .update({ qr_token: token, qr_token_updated_at: new Date().toISOString() })
-    .eq('id', eventId);
-  return { token: error ? null : token, error: error ? error.message : null };
+export async function setAttendanceOpen(eventId: string, open: boolean): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('events').update({ attendance_open: open }).eq('id', eventId);
+  return { error: error ? error.message : null };
 }
 
-export async function setAttendanceOpen(eventId: string, open: boolean): Promise<{ error: string | null }> {
-  const patch: Partial<Event> = { attendance_open: open };
-  if (!open) {
-    patch.qr_token = null;
-    patch.qr_token_updated_at = null;
+export async function manualMarkAttendance(opts: {
+  eventId: string;
+  studentId: string;
+  markedBy: string;
+  status: 'present' | 'absent';
+}): Promise<{ error: string | null }> {
+  const { eventId, studentId, markedBy, status } = opts;
+  const { data: existing, error: qErr } = await supabase
+    .from('attendance')
+    .select('id')
+    .eq('event_id', eventId)
+    .eq('student_id', studentId)
+    .maybeSingle();
+  if (qErr) return { error: qErr.message };
+
+  if (existing) {
+    const { error } = await supabase
+      .from('attendance')
+      .update({ status, marked_by: markedBy, marked_at: new Date().toISOString() })
+      .eq('id', existing.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase.from('attendance').insert({
+      event_id: eventId,
+      student_id: studentId,
+      status,
+      marked_by: markedBy,
+    });
+    if (error) return { error: error.message };
   }
-  const { error } = await supabase.from('events').update(patch).eq('id', eventId);
-  return { error: error ? error.message : null };
+
+  if (status === 'present') {
+    await supabase
+      .from('registrations')
+      .update({ status: 'attended' })
+      .eq('event_id', eventId)
+      .eq('student_id', studentId);
+  }
+
+  return { error: null };
+}
+
+export async function unmarkAttendance(opts: {
+  eventId: string;
+  studentId: string;
+}): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('attendance')
+    .delete()
+    .eq('event_id', opts.eventId)
+    .eq('student_id', opts.studentId);
+  if (error) return { error: error.message };
+  await supabase
+    .from('registrations')
+    .update({ status: 'registered' })
+    .eq('event_id', opts.eventId)
+    .eq('student_id', opts.studentId);
+  return { error: null };
 }
 
 export async function submitApprovalRequest(opts: {
