@@ -1,6 +1,6 @@
 import { Link, useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
-import { GraduationCap, Mail, Lock, User, ArrowRight, ShieldCheck, Moon, Sun } from 'lucide-react';
+import { GraduationCap, Mail, Lock, User, ArrowRight, ShieldCheck, Moon, Sun, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -8,6 +8,8 @@ import { Button } from '../../components/ui/Button';
 import { Field, Input } from '../../components/ui/Field';
 import { PasswordInput } from '../../components/ui/PasswordInput';
 import { validatePassword } from '../../lib/passwordValidation';
+import { validateEmailDomain, emailErrorMessage } from '../../lib/emailValidation';
+import { classNames } from '../../lib/utils';
 import type { Role } from '../../types';
 import { supabase } from '../../lib/supabase';
 
@@ -72,14 +74,20 @@ export function LoginPage() {
   const toast = useToast();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (session && profile) return <Navigate to="/app" replace />;
 
+  const emailError = emailTouched ? validateEmailDomain(email) : null;
+  const emailValid = validateEmailDomain(email) === null;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailTouched(true);
+    if (!emailValid) return;
     setLoading(true);
     const { error } = await signIn(email.trim(), password);
     setLoading(false);
@@ -93,10 +101,18 @@ export function LoginPage() {
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to your EventSync account.">
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Email">
+        <Field label="Email" error={emailError ? emailErrorMessage(emailError) : undefined}>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@srkrec.ac.in" className="pl-9" />
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              placeholder="you@srkrec.ac.in"
+              className={classNames('pl-9', emailError && 'border-red-500 focus:border-red-500 focus:ring-red-500')}
+            />
           </div>
         </Field>
         <Field label="Password">
@@ -114,7 +130,7 @@ export function LoginPage() {
           </label>
           <Link to="/forgot" className="font-medium text-brand-600 hover:text-brand-700">Forgot password?</Link>
         </div>
-        <Button type="submit" loading={loading} className="w-full">Sign in <ArrowRight className="h-4 w-4" /></Button>
+        <Button type="submit" loading={loading} disabled={!emailValid} className="w-full">Sign in <ArrowRight className="h-4 w-4" /></Button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-500">
         New to EventSync? <Link to="/signup" className="font-semibold text-brand-600 hover:text-brand-700">Create an account</Link>
@@ -129,24 +145,25 @@ export function SignupPage() {
   const navigate = useNavigate();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (session && profile) return <Navigate to="/app" replace />;
 
+  const emailError = emailTouched ? validateEmailDomain(email) : null;
+  const emailValid = validateEmailDomain(email) === null;
   const passwordValid = validatePassword(password).isStrong;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail.endsWith('@srkrec.ac.in')) {
-      toast.error('Invalid email domain', 'Only @srkrec.ac.in emails are allowed.');
-      return;
-    }
+    setEmailTouched(true);
+    if (!emailValid) return;
     if (!passwordValid) {
       toast.error('Password is too weak', 'Please create a strong password.');
       return;
     }
+    const trimmedEmail = email.trim().toLowerCase();
     const role = inferRoleFromEmail(trimmedEmail);
     setLoading(true);
     const { error } = await signUp({ email: trimmedEmail, password, fullName: fullName.trim(), role });
@@ -167,21 +184,29 @@ export function SignupPage() {
             <Input required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your name" className="pl-9" />
           </div>
         </Field>
-        <Field label="Email">
+        <Field label="Email" error={emailError ? emailErrorMessage(emailError) : undefined}>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@srkrec.ac.in" className="pl-9" />
+            <Input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmailTouched(true)}
+              placeholder="you@srkrec.ac.in"
+              className={classNames('pl-9', emailError && 'border-red-500 focus:border-red-500 focus:ring-red-500')}
+            />
           </div>
         </Field>
         <Field label="Password">
           <PasswordInput value={password} onChange={setPassword} placeholder="Create a strong password" />
         </Field>
-        <Button type="submit" loading={loading} disabled={!passwordValid} className="w-full">
+        <Button type="submit" loading={loading} disabled={!emailValid || !passwordValid} className="w-full">
           Create account <ArrowRight className="h-4 w-4" />
         </Button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-500">
-        Already have an account? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
+        Already have an account? <Link to="/login" class="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
       </p>
       <div className="mt-4 rounded-xl border border-ink-100 dark:border-ink-800 bg-ink-50 dark:bg-ink-900/50 p-4 text-xs text-ink-500">
         <p className="font-semibold text-ink-600 dark:text-ink-300">Role is auto-detected from your @srkrec.ac.in email:</p>
