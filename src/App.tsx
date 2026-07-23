@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { LandingPage } from './pages/LandingPage';
-import { LoginPage, SignupPage, ForgotPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages';
+import { LoginPage, SignupPage, ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/auth/AuthPages';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { StudentDashboard } from './pages/student/StudentDashboard';
 import { CoordinatorDashboard } from './pages/coordinator/CoordinatorDashboard';
@@ -68,6 +68,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot" element={<ForgotPasswordPage />} />
+      <Route path="/reset" element={<ResetPasswordPage />} />
       <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route path="/verify" element={<VerifyCertificatePage />} />
       <Route path="/verify-certificate" element={<VerifyCertificatePage />} />

@@ -1,4 +1,4 @@
-import { Link, useNavigate, Navigate } from 'react-router-dom';
+import { Link, useNavigate, Navigate, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { GraduationCap, Mail, Lock, User, ArrowRight, ShieldCheck, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +6,8 @@ import { useToast } from '../../context/ToastContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Button } from '../../components/ui/Button';
 import { Field, Input } from '../../components/ui/Field';
+import { PasswordInput } from '../../components/ui/PasswordInput';
+import { validatePassword } from '../../lib/passwordValidation';
 import type { Role } from '../../types';
 import { supabase } from '../../lib/supabase';
 
@@ -71,6 +73,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (session && profile) return <Navigate to="/app" replace />;
@@ -99,7 +102,10 @@ export function LoginPage() {
         <Field label="Password">
           <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="pl-9" />
+            <Input type={showPw ? 'text' : 'password'} required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="pl-9 pr-10" />
+            <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-600 dark:hover:text-ink-200" aria-label={showPw ? 'Hide password' : 'Show password'}>
+              {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
         </Field>
         <div className="flex items-center justify-between text-sm">
@@ -128,6 +134,8 @@ export function SignupPage() {
 
   if (session && profile) return <Navigate to="/app" replace />;
 
+  const passwordValid = validatePassword(password).isStrong;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedEmail = email.trim().toLowerCase();
@@ -135,8 +143,8 @@ export function SignupPage() {
       toast.error('Invalid email domain', 'Only @srkrec.ac.in emails are allowed.');
       return;
     }
-    if (password.length < 6) {
-      toast.error('Password too short', 'Use at least 6 characters.');
+    if (!passwordValid) {
+      toast.error('Password is too weak', 'Please create a strong password.');
       return;
     }
     const role = inferRoleFromEmail(trimmedEmail);
@@ -166,12 +174,11 @@ export function SignupPage() {
           </div>
         </Field>
         <Field label="Password">
-          <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" className="pl-9" />
-          </div>
+          <PasswordInput value={password} onChange={setPassword} placeholder="Create a strong password" />
         </Field>
-        <Button type="submit" loading={loading} className="w-full">Create account <ArrowRight className="h-4 w-4" /></Button>
+        <Button type="submit" loading={loading} disabled={!passwordValid} className="w-full">
+          Create account <ArrowRight className="h-4 w-4" />
+        </Button>
       </form>
       <p className="mt-6 text-center text-sm text-ink-500">
         Already have an account? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
@@ -226,6 +233,67 @@ export function ForgotPasswordPage() {
           </Field>
           <Button type="submit" loading={loading} className="w-full">Send reset link</Button>
         </form>
+      )}
+      <p className="mt-6 text-center text-sm text-ink-500">
+        Remembered? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
+      </p>
+    </AuthShell>
+  );
+}
+
+export function ResetPasswordPage() {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const hasRecoveryToken = searchParams.get('type') === 'recovery';
+
+  const passwordValid = validatePassword(password).isStrong;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordValid) {
+      toast.error('Password is too weak', 'Please create a strong password.');
+      return;
+    }
+    setLoading(true);
+    // Server-side password validation
+    const validateRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ password }),
+    });
+    if (!validateRes.ok) {
+      const body = await validateRes.json().catch(() => null);
+      toast.error('Password is too weak', body?.message ?? 'Please create a strong password.');
+      setLoading(false);
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) toast.error('Could not reset password', error.message);
+    else {
+      toast.success('Password updated', 'You can now sign in with your new password.');
+      navigate('/login');
+    }
+  };
+
+  return (
+    <AuthShell title="Reset your password" subtitle="Choose a new strong password for your account.">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="New password">
+          <PasswordInput value={password} onChange={setPassword} placeholder="Create a strong password" />
+        </Field>
+        <Button type="submit" loading={loading} disabled={!passwordValid} className="w-full">
+          Reset password <ArrowRight className="h-4 w-4" />
+        </Button>
+      </form>
+      {!hasRecoveryToken && (
+        <p className="mt-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/30 p-3 text-xs text-yellow-700 dark:text-yellow-400">
+          This link may have expired. If resetting doesn't work, request a new link from the forgot password page.
+        </p>
       )}
       <p className="mt-6 text-center text-sm text-ink-500">
         Remembered? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>

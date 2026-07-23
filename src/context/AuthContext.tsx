@@ -84,6 +84,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp: AuthContextValue['signUp'] = async ({ email, password, fullName, role }) => {
+    // Server-side password validation
+    const validateRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/validate-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ password }),
+    });
+    if (!validateRes.ok) {
+      const body = await validateRes.json().catch(() => null);
+      return { error: body?.message ?? 'Password is too weak. Please create a strong password.' };
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
