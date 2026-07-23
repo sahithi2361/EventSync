@@ -171,7 +171,15 @@ export function SignupPage() {
       <p className="mt-6 text-center text-sm text-ink-500">
         Already have an account? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
       </p>
-      
+      <div className="mt-4 rounded-xl border border-ink-100 dark:border-ink-800 bg-ink-50 dark:bg-ink-900/50 p-4 text-xs text-ink-500">
+        <p className="font-semibold text-ink-600 dark:text-ink-300">Role is auto-detected from your email:</p>
+        <ul className="mt-2 space-y-1">
+          <li><span className="font-medium">22b81a5401@</span> → Student</li>
+          <li><span className="font-medium">ramesh@</span> → Coordinator</li>
+          <li><span className="font-medium">deanacademics@</span> → Dean Academics</li>
+          <li><span className="font-medium">admin@</span> → Admin</li>
+        </ul>
+      </div>
     </AuthShell>
   );
 }
