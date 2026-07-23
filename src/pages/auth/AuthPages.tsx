@@ -93,7 +93,7 @@ export function LoginPage() {
         <Field label="Email">
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" className="pl-9" />
+            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@srkrec.ac.in" className="pl-9" />
           </div>
         </Field>
         <Field label="Password">
@@ -130,13 +130,18 @@ export function SignupPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail.endsWith('@srkrec.ac.in')) {
+      toast.error('Invalid email domain', 'Only @srkrec.ac.in emails are allowed.');
+      return;
+    }
     if (password.length < 6) {
       toast.error('Password too short', 'Use at least 6 characters.');
       return;
     }
-    const role = inferRoleFromEmail(email.trim());
+    const role = inferRoleFromEmail(trimmedEmail);
     setLoading(true);
-    const { error } = await signUp({ email: email.trim(), password, fullName: fullName.trim(), role });
+    const { error } = await signUp({ email: trimmedEmail, password, fullName: fullName.trim(), role });
     setLoading(false);
     if (error) toast.error('Sign up failed', error);
     else {
@@ -157,7 +162,7 @@ export function SignupPage() {
         <Field label="Email">
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" className="pl-9" />
+            <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@srkrec.ac.in" className="pl-9" />
           </div>
         </Field>
         <Field label="Password">
@@ -172,12 +177,12 @@ export function SignupPage() {
         Already have an account? <Link to="/login" className="font-semibold text-brand-600 hover:text-brand-700">Sign in</Link>
       </p>
       <div className="mt-4 rounded-xl border border-ink-100 dark:border-ink-800 bg-ink-50 dark:bg-ink-900/50 p-4 text-xs text-ink-500">
-        <p className="font-semibold text-ink-600 dark:text-ink-300">Role is auto-detected from your email:</p>
+        <p className="font-semibold text-ink-600 dark:text-ink-300">Role is auto-detected from your @srkrec.ac.in email:</p>
         <ul className="mt-2 space-y-1">
-          <li><span className="font-medium">22b81a5401@</span> → Student</li>
-          <li><span className="font-medium">ramesh@</span> → Coordinator</li>
-          <li><span className="font-medium">deanacademics@</span> → Dean Academics</li>
-          <li><span className="font-medium">admin@</span> → Admin</li>
+          <li><span className="font-medium">22b81a5401@srkrec.ac.in</span> → Student</li>
+          <li><span className="font-medium">ramesh@srkrec.ac.in</span> → Coordinator</li>
+          <li><span className="font-medium">deanacademics@srkrec.ac.in</span> → Dean Academics</li>
+          <li><span className="font-medium">admin@srkrec.ac.in</span> → Admin</li>
         </ul>
       </div>
     </AuthShell>
@@ -216,7 +221,7 @@ export function ForgotPasswordPage() {
           <Field label="Email">
             <div className="relative">
               <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" className="pl-9" />
+              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@srkrec.ac.in" className="pl-9" />
             </div>
           </Field>
           <Button type="submit" loading={loading} className="w-full">Send reset link</Button>
